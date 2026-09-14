@@ -39,14 +39,14 @@ fs::path ObjectStore::path_for(const Digest& digest) const {
     return dir / hex.substr(2);
 }
 
-Digest ObjectStore::put(const std::vector<uint8_t>& data) const {
+PutResult ObjectStore::put(const std::vector<uint8_t>& data) const {
     auto hasher = make_hasher(write_algo_);
     hasher->update(data.data(), data.size());
     Digest digest = hasher->finalize();
 
     fs::path final_path = path_for(digest);
     if (fs::exists(final_path)) {
-        return digest; // content-addressing: identical content, nothing to write
+        return {digest, false}; // content-addressing: identical content, nothing to write
     }
 
     fs::path dir = final_path.parent_path();
@@ -94,7 +94,7 @@ Digest ObjectStore::put(const std::vector<uint8_t>& data) const {
         fs::remove(tmp_path, ec);
     }
 
-    return digest;
+    return {digest, true};
 }
 
 std::vector<uint8_t> ObjectStore::get(const Digest& digest) const {

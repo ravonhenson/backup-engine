@@ -5,6 +5,15 @@
 
 #include "digest.h"
 
+// Result of a put(): the object's digest, and whether this call actually
+// wrote new bytes or the content already existed (content-addressing
+// makes a duplicate write a no-op). The latter is what lets a caller
+// report dedup statistics without maintaining a separate index.
+struct PutResult {
+    Digest digest;
+    bool newly_written;
+};
+
 // A content-addressable object store. Objects are namespaced by algorithm
 // on disk (objects/<algo>/<xx>/<rest-hex>) so digests from different
 // algorithms can never collide on the same path, and the path itself
@@ -15,8 +24,8 @@ public:
     ObjectStore(std::filesystem::path objects_root, HashAlgo write_algo);
 
     // Hashes data with the store's write algorithm and stores it if not
-    // already present (content-addressing makes a duplicate write a no-op).
-    Digest put(const std::vector<uint8_t>& data) const;
+    // already present.
+    PutResult put(const std::vector<uint8_t>& data) const;
 
     // Reads the object back and re-verifies its hash before returning,
     // so every read also acts as a corruption/bit-rot check. Throws

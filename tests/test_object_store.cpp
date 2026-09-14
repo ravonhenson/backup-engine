@@ -48,7 +48,7 @@ TEST_F(ObjectStoreTest, PutGetRoundTrip) {
     ObjectStore store(root_ / "objects", HashAlgo::SHA256);
     auto data = to_bytes("hello world");
 
-    Digest digest = store.put(data);
+    Digest digest = store.put(data).digest;
     auto got = store.get(digest);
 
     EXPECT_EQ(got, data);
@@ -58,20 +58,22 @@ TEST_F(ObjectStoreTest, PuttingSameContentTwiceIsIdempotent) {
     ObjectStore store(root_ / "objects", HashAlgo::SHA256);
     auto data = to_bytes("duplicate me");
 
-    Digest first = store.put(data);
+    PutResult first = store.put(data);
     std::size_t files_after_first = count_regular_files(root_ / "objects");
 
-    Digest second = store.put(data);
+    PutResult second = store.put(data);
     std::size_t files_after_second = count_regular_files(root_ / "objects");
 
-    EXPECT_EQ(first, second);
+    EXPECT_EQ(first.digest, second.digest);
+    EXPECT_TRUE(first.newly_written);
+    EXPECT_FALSE(second.newly_written);
     EXPECT_EQ(files_after_first, files_after_second);
 }
 
 TEST_F(ObjectStoreTest, ExistsReflectsStoredObjects) {
     ObjectStore store(root_ / "objects", HashAlgo::SHA256);
     auto data = to_bytes("check existence");
-    Digest digest = store.put(data);
+    Digest digest = store.put(data).digest;
 
     EXPECT_TRUE(store.exists(digest));
 
@@ -91,7 +93,7 @@ TEST_F(ObjectStoreTest, GetOnMissingObjectThrows) {
 TEST_F(ObjectStoreTest, CorruptedObjectFailsVerificationOnRead) {
     ObjectStore store(root_ / "objects", HashAlgo::SHA256);
     auto data = to_bytes("do not corrupt me");
-    Digest digest = store.put(data);
+    Digest digest = store.put(data).digest;
 
     fs::path on_disk = store.path_for(digest);
     // Objects are written read-only; restore write permission to simulate
@@ -112,7 +114,7 @@ TEST_F(ObjectStoreTest, SurvivesReopeningTheStore) {
     Digest digest;
     {
         ObjectStore store(objects_dir, HashAlgo::SHA256);
-        digest = store.put(to_bytes("still here after restart"));
+        digest = store.put(to_bytes("still here after restart")).digest;
     }
     {
         ObjectStore reopened(objects_dir, HashAlgo::SHA256);

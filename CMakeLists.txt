@@ -12,6 +12,13 @@ add_library(backup_engine_core STATIC
     src/sha256_hasher.cpp
     src/object_store.cpp
     src/repo.cpp
+    src/fs_util.cpp
+    src/manifest.cpp
+    src/snapshot.cpp
+    src/chunker.cpp
+    src/chunk_list.cpp
+    src/oplog.cpp
+    src/merkle.cpp
 )
 target_include_directories(backup_engine_core PUBLIC
     src
@@ -37,6 +44,14 @@ if(BACKUP_ENGINE_BUILD_TESTS)
     add_executable(unit_tests
         tests/test_digest.cpp
         tests/test_object_store.cpp
+        tests/test_manifest.cpp
+        tests/test_snapshot.cpp
+        tests/test_chunker.cpp
+        tests/test_chunk_list.cpp
+        tests/test_oplog.cpp
+        tests/test_crash_safety.cpp
+        tests/test_immutability.cpp
+        tests/test_merkle.cpp
     )
     target_link_libraries(unit_tests PRIVATE backup_engine_core GTest::gtest_main)
 

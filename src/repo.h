@@ -15,6 +15,8 @@ public:
 
     ObjectStore& objects() { return object_store_; }
     const ObjectStore& objects() const { return object_store_; }
+    const std::filesystem::path& root() const { return root_; }
+    HashAlgo default_algo() const { return default_algo_; }
 
 private:
     Repo(std::filesystem::path root, HashAlgo default_algo);

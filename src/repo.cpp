@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "fs_util.h"
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -41,13 +43,15 @@ Repo Repo::init(const fs::path& root) {
         throw std::runtime_error("failed to create repo at " + root.string() + ": " + ec.message());
     }
 
-    std::ofstream conf(root / kConfigFileName, std::ios::trunc);
-    if (!conf) {
-        throw std::runtime_error("failed to write repo config at " + root.string());
-    }
+    std::ostringstream conf;
     conf << "format_version=" << kFormatVersion << "\n";
     conf << "default_algo=sha256\n";
-    conf.close();
+    std::string s = conf.str();
+    // Atomic + fsync'd: a crash right after init() returns (or even a
+    // clean process exit before the OS flushes an unsynced write) must
+    // never leave a truncated repo.conf that Repo::open() can't parse --
+    // that would permanently brick the repo before it's ever used.
+    write_file_atomically(root / kConfigFileName, std::vector<uint8_t>(s.begin(), s.end()));
 
     return Repo(root, HashAlgo::SHA256);
 }
