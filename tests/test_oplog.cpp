@@ -2,27 +2,22 @@
 
 #include <filesystem>
 #include <fstream>
-#include <random>
 
 #include "oplog.h"
 #include "repo.h"
+#include "test_util.h"
 
 namespace fs = std::filesystem;
 
 class OpLogTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        std::mt19937_64 rng{std::random_device{}()};
-        root_ = fs::temp_directory_path() / ("backup_engine_oplog_test_" + std::to_string(rng()));
+        root_ = tmp_.path();
         repo_path_ = root_ / "repo";
         Repo::init(repo_path_);
     }
 
-    void TearDown() override {
-        std::error_code ec;
-        fs::remove_all(root_, ec);
-    }
-
+    test_util::TempDir tmp_; // declared first: outlives every path below
     fs::path root_;
     fs::path repo_path_;
 };

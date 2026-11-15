@@ -1,6 +1,9 @@
 #include "chunk_list.h"
 
 #include <sstream>
+#include <string_view>
+
+#include "text_format.h"
 
 std::vector<uint8_t> ChunkList::serialize() const {
     std::ostringstream out;
@@ -25,32 +28,29 @@ std::optional<ChunkList> ChunkList::deserialize(const std::vector<uint8_t>& data
         if (line.empty()) continue;
 
         if (line.rfind("chunk ", 0) == 0) {
-            std::istringstream fields(line.substr(6));
-            std::string digest_text;
-            uint64_t size = 0;
-            if (!(fields >> digest_text >> size)) return std::nullopt;
+            // "chunk <digest> <size>"
+            std::string_view fields = std::string_view(line).substr(6);
+            auto space = fields.find(' ');
+            if (space == std::string_view::npos) return std::nullopt;
+            auto digest = Digest::parse(fields.substr(0, space));
+            auto size = parse_u64(fields.substr(space + 1));
+            if (!digest || !size) return std::nullopt;
 
-            auto digest = Digest::parse(digest_text);
-            if (!digest) return std::nullopt;
-
-            list.chunks.push_back({*digest, size});
+            list.chunks.push_back({*digest, *size});
             continue;
         }
 
-        auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        std::string key = line.substr(0, eq);
-        std::string value = line.substr(eq + 1);
+        auto kv = split_key_value(line);
+        if (!kv) continue;
+        auto [key, value] = *kv;
 
         if (key == "format_version") {
             if (value != "1") return std::nullopt;
             have_version = true;
         } else if (key == "total_size") {
-            try {
-                list.total_size = std::stoull(value);
-            } catch (const std::exception&) {
-                return std::nullopt;
-            }
+            auto total = parse_u64(value);
+            if (!total) return std::nullopt;
+            list.total_size = *total;
         }
     }
 

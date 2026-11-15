@@ -4,6 +4,9 @@
 
 #include "digest.h"
 #include "hasher.h"
+#include "test_util.h"
+
+using test_util::to_bytes;
 
 namespace {
 
@@ -11,10 +14,6 @@ Digest hash_bytes(const std::vector<uint8_t>& data) {
     auto hasher = make_hasher(HashAlgo::SHA256);
     hasher->update(data.data(), data.size());
     return hasher->finalize();
-}
-
-std::vector<uint8_t> to_bytes(std::string_view s) {
-    return std::vector<uint8_t>(s.begin(), s.end());
 }
 
 } // namespace

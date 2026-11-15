@@ -6,12 +6,13 @@
 #include <unordered_map>
 
 #include "fs_util.h"
+#include "text_format.h"
 
 namespace fs = std::filesystem;
 
 namespace {
 
-constexpr int kFormatVersion = 1;
+constexpr uint64_t kFormatVersion = 1;
 constexpr const char* kConfigFileName = "repo.conf";
 
 std::unordered_map<std::string, std::string> read_config(const fs::path& path) {
@@ -22,9 +23,7 @@ std::unordered_map<std::string, std::string> read_config(const fs::path& path) {
     std::unordered_map<std::string, std::string> kv;
     std::string line;
     while (std::getline(f, line)) {
-        auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        kv[line.substr(0, eq)] = line.substr(eq + 1);
+        if (auto pair = split_key_value(line)) kv[std::string(pair->first)] = std::string(pair->second);
     }
     return kv;
 }
@@ -37,10 +36,10 @@ Repo::Repo(fs::path root, HashAlgo default_algo)
       object_store_(root_ / "objects", default_algo) {}
 
 Repo Repo::init(const fs::path& root) {
-    std::error_code ec;
-    fs::create_directories(root / "objects", ec);
-    if (ec) {
-        throw std::runtime_error("failed to create repo at " + root.string() + ": " + ec.message());
+    try {
+        create_directories_durably(root / "objects");
+    } catch (const std::exception& e) {
+        throw std::runtime_error("failed to create repo at " + root.string() + ": " + e.what());
     }
 
     std::ostringstream conf;
@@ -51,7 +50,10 @@ Repo Repo::init(const fs::path& root) {
     // clean process exit before the OS flushes an unsynced write) must
     // never leave a truncated repo.conf that Repo::open() can't parse --
     // that would permanently brick the repo before it's ever used.
-    write_file_atomically(root / kConfigFileName, std::vector<uint8_t>(s.begin(), s.end()));
+    write_file_atomically(root / kConfigFileName, reinterpret_cast<const uint8_t*>(s.data()), s.size());
+    // Init is a commit point: flush through the drive cache too (see the
+    // durability model in fs_util.h).
+    sync_barrier_path(root);
 
     return Repo(root, HashAlgo::SHA256);
 }
@@ -60,8 +62,13 @@ Repo Repo::open(const fs::path& root) {
     auto kv = read_config(root / kConfigFileName);
 
     auto version_it = kv.find("format_version");
-    if (version_it == kv.end() || std::stoi(version_it->second) != kFormatVersion) {
-        throw std::runtime_error("unsupported or missing repo format_version at " + root.string());
+    if (version_it == kv.end()) {
+        throw std::runtime_error("repo config missing format_version at " + root.string());
+    }
+    auto version = parse_u64(version_it->second);
+    if (!version || *version != kFormatVersion) {
+        throw std::runtime_error("unsupported repo format_version \"" + version_it->second + "\" at " +
+                                 root.string());
     }
 
     auto algo_it = kv.find("default_algo");

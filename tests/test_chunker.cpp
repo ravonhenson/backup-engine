@@ -1,21 +1,16 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <random>
 #include <set>
 #include <vector>
 
 #include "chunker.h"
 #include "hasher.h"
+#include "test_util.h"
+
+using test_util::pseudo_random_bytes;
 
 namespace {
-
-std::vector<uint8_t> pseudo_random_bytes(std::size_t n, uint32_t seed) {
-    std::vector<uint8_t> data(n);
-    std::mt19937 rng(seed);
-    for (auto& b : data) b = static_cast<uint8_t>(rng() % 256);
-    return data;
-}
 
 std::string hash_hex(const uint8_t* data, std::size_t len) {
     auto hasher = make_hasher(HashAlgo::SHA256);

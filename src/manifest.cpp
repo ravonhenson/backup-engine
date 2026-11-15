@@ -2,6 +2,8 @@
 
 #include <sstream>
 
+#include "text_format.h"
+
 namespace {
 
 // Splits exactly `n` leading whitespace-delimited fields off `line`,
@@ -18,6 +20,14 @@ bool split_fields(const std::string& line, int n, std::vector<std::string>& fiel
     }
     rest = line.substr(pos);
     return true;
+}
+
+// POSIX permission bits, written in octal and masked to 12 bits at
+// creation, so anything above 07777 can only be corruption.
+std::optional<uint32_t> parse_mode(std::string_view text) {
+    auto v = parse_u64(text, 8);
+    if (!v || *v > 07777) return std::nullopt;
+    return static_cast<uint32_t>(*v);
 }
 
 } // namespace
@@ -61,11 +71,9 @@ std::optional<Manifest> Manifest::deserialize(const std::vector<uint8_t>& data) 
 
             ManifestEntry e;
             e.is_directory = true;
-            try {
-                e.mode = static_cast<uint32_t>(std::stoul(fields[1], nullptr, 8));
-            } catch (const std::exception&) {
-                return std::nullopt;
-            }
+            auto mode = parse_mode(fields[1]);
+            if (!mode) return std::nullopt;
+            e.mode = *mode;
             e.relative_path = rest;
             m.entries.push_back(std::move(e));
             continue;
@@ -78,12 +86,11 @@ std::optional<Manifest> Manifest::deserialize(const std::vector<uint8_t>& data) 
 
             ManifestEntry e;
             e.is_directory = false;
-            try {
-                e.mode = static_cast<uint32_t>(std::stoul(fields[1], nullptr, 8));
-                e.size = std::stoull(fields[2]);
-            } catch (const std::exception&) {
-                return std::nullopt;
-            }
+            auto mode = parse_mode(fields[1]);
+            auto size = parse_u64(fields[2]);
+            if (!mode || !size) return std::nullopt;
+            e.mode = *mode;
+            e.size = *size;
             auto digest = Digest::parse(fields[3]);
             if (!digest) return std::nullopt;
             e.digest = *digest;
@@ -92,22 +99,19 @@ std::optional<Manifest> Manifest::deserialize(const std::vector<uint8_t>& data) 
             continue;
         }
 
-        auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        std::string key = line.substr(0, eq);
-        std::string value = line.substr(eq + 1);
+        auto kv = split_key_value(line);
+        if (!kv) continue;
+        auto [key, value] = *kv;
 
         if (key == "format_version") {
             if (value != "2") return std::nullopt;
             have_version = true;
         } else if (key == "created_at") {
-            try {
-                m.created_at = std::stoull(value);
-            } catch (const std::exception&) {
-                return std::nullopt;
-            }
+            auto created_at = parse_u64(value);
+            if (!created_at) return std::nullopt;
+            m.created_at = *created_at;
         } else if (key == "source_root") {
-            m.source_root = value;
+            m.source_root = std::string(value);
         } else if (key == "merkle_root") {
             auto digest = Digest::parse(value);
             if (!digest) return std::nullopt;

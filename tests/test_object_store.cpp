@@ -5,18 +5,16 @@
 
 #include <filesystem>
 #include <fstream>
-#include <random>
 #include <vector>
 
+#include "errors.h"
 #include "object_store.h"
+#include "test_util.h"
 
 namespace fs = std::filesystem;
+using test_util::to_bytes;
 
 namespace {
-
-std::vector<uint8_t> to_bytes(std::string_view s) {
-    return std::vector<uint8_t>(s.begin(), s.end());
-}
 
 std::size_t count_regular_files(const fs::path& root) {
     std::size_t n = 0;
@@ -31,16 +29,11 @@ std::size_t count_regular_files(const fs::path& root) {
 class ObjectStoreTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        std::mt19937_64 rng{std::random_device{}()};
-        root_ = fs::temp_directory_path() / ("backup_engine_test_" + std::to_string(rng()));
+        root_ = tmp_.path();
         fs::create_directories(root_);
     }
 
-    void TearDown() override {
-        std::error_code ec;
-        fs::remove_all(root_, ec);
-    }
-
+    test_util::TempDir tmp_; // declared first: outlives every path below
     fs::path root_;
 };
 
@@ -87,7 +80,7 @@ TEST_F(ObjectStoreTest, GetOnMissingObjectThrows) {
     auto missing = Digest::from_hex(HashAlgo::SHA256, std::string(64, 'a'));
     ASSERT_TRUE(missing.has_value());
 
-    EXPECT_THROW(store.get(*missing), std::runtime_error);
+    EXPECT_THROW(store.get(*missing), ObjectNotFoundError);
 }
 
 TEST_F(ObjectStoreTest, CorruptedObjectFailsVerificationOnRead) {
@@ -106,7 +99,7 @@ TEST_F(ObjectStoreTest, CorruptedObjectFailsVerificationOnRead) {
         f.put(static_cast<char>(0x00));
     }
 
-    EXPECT_THROW(store.get(digest), std::runtime_error);
+    EXPECT_THROW(store.get(digest), IntegrityError);
 }
 
 TEST_F(ObjectStoreTest, SurvivesReopeningTheStore) {

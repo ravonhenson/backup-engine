@@ -1,31 +1,14 @@
 #include "object_store.h"
 
-#include <fcntl.h>
-#include <unistd.h>
-
-#include <cerrno>
-#include <cstdio>
-#include <cstring>
 #include <fstream>
-#include <random>
 #include <stdexcept>
 #include <system_error>
 
+#include "errors.h"
+#include "fs_util.h"
 #include "hasher.h"
 
 namespace fs = std::filesystem;
-
-namespace {
-
-std::string random_suffix() {
-    static thread_local std::mt19937_64 rng{std::random_device{}()};
-    uint64_t v = rng();
-    char buf[17];
-    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(v));
-    return std::string(buf);
-}
-
-} // namespace
 
 ObjectStore::ObjectStore(fs::path objects_root, HashAlgo write_algo)
     : objects_root_(std::move(objects_root)), write_algo_(write_algo) {
@@ -39,77 +22,48 @@ fs::path ObjectStore::path_for(const Digest& digest) const {
     return dir / hex.substr(2);
 }
 
-PutResult ObjectStore::put(const std::vector<uint8_t>& data) const {
-    auto hasher = make_hasher(write_algo_);
-    hasher->update(data.data(), data.size());
-    Digest digest = hasher->finalize();
+PutResult ObjectStore::put(const uint8_t* data, std::size_t len) const {
+    Digest digest = hash_bytes(write_algo_, data, len);
 
     fs::path final_path = path_for(digest);
     if (fs::exists(final_path)) {
         return {digest, false}; // content-addressing: identical content, nothing to write
     }
 
-    fs::path dir = final_path.parent_path();
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-
-    fs::path tmp_path = dir / ("." + final_path.filename().string() + ".tmp-" + random_suffix());
-
-    int fd = ::open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0444);
-    if (fd < 0) {
-        throw std::runtime_error("failed to create temp file: " + tmp_path.string() + ": " + std::strerror(errno));
+    // Temp file -> fsync -> rename -> fsync the shard directory (creating
+    // it, and syncing its parent, if this is the shard's first object).
+    try {
+        write_file_atomically(final_path, data, len);
+    } catch (const std::exception&) {
+        // Another writer may have committed the same content-addressed
+        // object concurrently. rename() is atomic, so if the path exists
+        // now it holds a complete object with identical content.
+        if (fs::exists(final_path)) return {digest, false};
+        throw;
     }
-
-    const uint8_t* ptr = data.data();
-    size_t remaining = data.size();
-    while (remaining > 0) {
-        ssize_t written = ::write(fd, ptr, remaining);
-        if (written < 0) {
-            if (errno == EINTR) continue;
-            int err = errno;
-            ::close(fd);
-            fs::remove(tmp_path, ec);
-            throw std::runtime_error(std::string("failed to write object: ") + std::strerror(err));
-        }
-        ptr += written;
-        remaining -= static_cast<size_t>(written);
-    }
-
-    if (::fsync(fd) != 0) {
-        int err = errno;
-        ::close(fd);
-        fs::remove(tmp_path, ec);
-        throw std::runtime_error(std::string("fsync failed: ") + std::strerror(err));
-    }
-    ::close(fd);
-
-    fs::rename(tmp_path, final_path, ec);
-    if (ec) {
-        // Another writer may have raced us to the same content-addressed
-        // path; if the object exists now, that's a successful outcome.
-        if (!fs::exists(final_path)) {
-            fs::remove(tmp_path, ec);
-            throw std::runtime_error("failed to commit object: " + ec.message());
-        }
-        fs::remove(tmp_path, ec);
-    }
-
     return {digest, true};
+}
+
+PutResult ObjectStore::put(const std::vector<uint8_t>& data) const {
+    return put(data.data(), data.size());
 }
 
 std::vector<uint8_t> ObjectStore::get(const Digest& digest) const {
     fs::path p = path_for(digest);
     std::ifstream f(p, std::ios::binary);
     if (!f) {
-        throw std::runtime_error("object not found: " + digest.to_string());
+        // Only report "not found" when that's actually what happened -- a
+        // present-but-unreadable object (e.g. permissions) is a different
+        // problem and shouldn't be misdiagnosed as missing.
+        std::error_code ec;
+        if (!fs::exists(p, ec)) throw ObjectNotFoundError("object not found: " + digest.to_string());
+        throw std::runtime_error("cannot read object " + digest.to_string() + " at " + p.string());
     }
     std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 
-    auto hasher = make_hasher(digest.algo);
-    hasher->update(data.data(), data.size());
-    Digest recomputed = hasher->finalize();
-    if (recomputed != digest) {
-        throw std::runtime_error("integrity check failed for object: " + digest.to_string());
+    // A short read also lands here: truncated data can't match the hash.
+    if (hash_bytes(digest.algo, data) != digest) {
+        throw IntegrityError("integrity check failed for object: " + digest.to_string());
     }
     return data;
 }

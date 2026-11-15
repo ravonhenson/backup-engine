@@ -11,8 +11,10 @@
 #include "oplog.h"
 #include "repo.h"
 #include "snapshot.h"
+#include "test_util.h"
 
 namespace fs = std::filesystem;
+using test_util::to_bytes;
 
 namespace {
 
@@ -22,17 +24,12 @@ void write_text(const fs::path& p, const std::string& content) {
     f << content;
 }
 
-std::vector<uint8_t> to_bytes(std::string_view s) {
-    return std::vector<uint8_t>(s.begin(), s.end());
-}
-
 } // namespace
 
 class SnapshotTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        std::mt19937_64 rng{std::random_device{}()};
-        root_ = fs::temp_directory_path() / ("backup_engine_snapshot_test_" + std::to_string(rng()));
+        root_ = tmp_.path();
         fs::create_directories(root_);
         repo_path_ = root_ / "repo";
         src_path_ = root_ / "src";
@@ -40,11 +37,7 @@ protected:
         Repo::init(repo_path_);
     }
 
-    void TearDown() override {
-        std::error_code ec;
-        fs::remove_all(root_, ec);
-    }
-
+    test_util::TempDir tmp_; // declared first: outlives every path below
     fs::path root_;
     fs::path repo_path_;
     fs::path src_path_;
@@ -421,4 +414,19 @@ TEST_F(SnapshotTest, TamperingTheManifestIsCaughtByObjectStoreNotByTheRootCheck)
     EXPECT_FALSE(verify.ok);
     EXPECT_EQ(verify.chunks_checked, 0u);
     EXPECT_NE(verify.message.find("failed to fetch manifest"), std::string::npos) << verify.message;
+}
+
+// A digest with more than one snapshot_created event (identical content
+// backed up again within the same second) is listed once, at its first
+// creation -- not once per event.
+TEST_F(SnapshotTest, RecreatedDigestIsListedOnce) {
+    write_text(src_path_ / "a.txt", "a");
+    Repo repo = Repo::open(repo_path_);
+    SnapshotResult first = create_snapshot(repo, src_path_);
+    append_operation(repo, snapshot_events::kCreated, first.digest.to_string());
+
+    auto listed = list_snapshots(repo);
+    ASSERT_EQ(listed.size(), 1u);
+    EXPECT_EQ(listed[0].digest, first.digest);
+    EXPECT_EQ(listed[0].created_at, first.operation.timestamp);
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <vector>
 
@@ -24,12 +26,15 @@ public:
     ObjectStore(std::filesystem::path objects_root, HashAlgo write_algo);
 
     // Hashes data with the store's write algorithm and stores it if not
-    // already present.
+    // already present. Durable once it returns: the object is fsync'd and
+    // so is the directory entry naming it.
+    PutResult put(const uint8_t* data, std::size_t len) const;
     PutResult put(const std::vector<uint8_t>& data) const;
 
     // Reads the object back and re-verifies its hash before returning,
     // so every read also acts as a corruption/bit-rot check. Throws
-    // std::runtime_error if the object is missing or fails verification.
+    // ObjectNotFoundError if it's missing, IntegrityError if it fails
+    // verification (see errors.h), std::runtime_error if it can't be read.
     std::vector<uint8_t> get(const Digest& digest) const;
 
     bool exists(const Digest& digest) const;

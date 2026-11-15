@@ -19,6 +19,7 @@ add_library(backup_engine_core STATIC
     src/chunk_list.cpp
     src/oplog.cpp
     src/merkle.cpp
+    src/text_format.cpp
 )
 target_include_directories(backup_engine_core PUBLIC
     src
@@ -52,6 +53,9 @@ if(BACKUP_ENGINE_BUILD_TESTS)
         tests/test_crash_safety.cpp
         tests/test_immutability.cpp
         tests/test_merkle.cpp
+        tests/test_characterization.cpp
+        tests/test_fs_util.cpp
+        tests/test_text_format.cpp
     )
     target_link_libraries(unit_tests PRIVATE backup_engine_core GTest::gtest_main)
 

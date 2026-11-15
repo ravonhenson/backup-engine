@@ -4,12 +4,12 @@
 #include <unistd.h>
 
 #include <cerrno>
-#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 
+#include "fs_util.h"
 #include "hasher.h"
 
 namespace fs = std::filesystem;
@@ -26,22 +26,12 @@ Digest genesis_digest(HashAlgo algo) {
     return d;
 }
 
-uint64_t now_unix_seconds() {
-    return static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count());
-}
-
 Digest compute_entry_hash(HashAlgo algo, const OperationEntry& e) {
     std::ostringstream canonical;
     canonical << e.seq << '\n' << e.timestamp << '\n' << e.event_type << '\n' << e.event_data << '\n'
               << e.prev_hash.to_string() << '\n';
     std::string s = canonical.str();
-
-    auto hasher = make_hasher(algo);
-    hasher->update(reinterpret_cast<const uint8_t*>(s.data()), s.size());
-    return hasher->finalize();
+    return hash_bytes(algo, reinterpret_cast<const uint8_t*>(s.data()), s.size());
 }
 
 std::string serialize_entry(const OperationEntry& e) {
@@ -51,12 +41,32 @@ std::string serialize_entry(const OperationEntry& e) {
     return line.str();
 }
 
-// A single O_APPEND write plus fsync is the right durability primitive
+// Removes owner write permission from `path` on scope exit -- including
+// when an append throws, so a failed append can't leave the log writable.
+class ReadOnlyOnExit {
+public:
+    explicit ReadOnlyOnExit(const fs::path& path) : path_(path) {}
+    ~ReadOnlyOnExit() {
+        std::error_code ec;
+        fs::permissions(path_, fs::perms::owner_write, fs::perm_options::remove, ec);
+    }
+    ReadOnlyOnExit(const ReadOnlyOnExit&) = delete;
+    ReadOnlyOnExit& operator=(const ReadOnlyOnExit&) = delete;
+
+private:
+    const fs::path& path_;
+};
+
+// A single O_APPEND write plus a sync is the right durability primitive
 // here, unlike ObjectStore's temp-file-then-rename dance: that pattern
 // exists because CAS objects are created fresh and must never be
-// observed half-written, whereas this file is grown in place and
-// POSIX guarantees a single O_APPEND write() lands atomically relative
-// to other writers.
+// observed half-written, whereas this file is grown in place.
+//
+// This append is the commit point that makes a snapshot visible, so it
+// is bracketed by storage barriers (see the durability model in
+// fs_util.h): the first guarantees every object the new entry refers to
+// is durable *before* the entry can be; the second makes the entry itself
+// durable before returning.
 //
 // The file is left read-only (0444) between appends, matching the
 // immutable-by-construction property CAS objects already have -- a
@@ -66,37 +76,23 @@ std::string serialize_entry(const OperationEntry& e) {
 // same honest limitation already documented for the hash chain itself.
 void append_line_durably(const fs::path& path, const std::string& line) {
     std::error_code ec;
-    if (fs::exists(path)) {
+    const bool existed = fs::exists(path, ec);
+    if (existed) {
         fs::permissions(path, fs::perms::owner_write, fs::perm_options::add, ec);
     }
+    ReadOnlyOnExit read_only_again(path); // declared before fd: runs after fd is closed
 
-    int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd < 0) {
+    UniqueFd fd(::open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644));
+    if (!fd.valid()) {
         throw std::runtime_error("failed to open operations log: " + path.string() + ": " + std::strerror(errno));
     }
 
-    const char* ptr = line.data();
-    std::size_t remaining = line.size();
-    while (remaining > 0) {
-        ssize_t written = ::write(fd, ptr, remaining);
-        if (written < 0) {
-            if (errno == EINTR) continue;
-            int err = errno;
-            ::close(fd);
-            throw std::runtime_error(std::string("failed to append to operations log: ") + std::strerror(err));
-        }
-        ptr += written;
-        remaining -= static_cast<std::size_t>(written);
-    }
+    sync_barrier(fd.get(), "operations log (pre-append barrier)");
+    write_all(fd.get(), reinterpret_cast<const uint8_t*>(line.data()), line.size(),
+              "failed to append to operations log");
+    sync_barrier(fd.get(), "operations log");
 
-    if (::fsync(fd) != 0) {
-        int err = errno;
-        ::close(fd);
-        throw std::runtime_error(std::string("fsync failed for operations log: ") + std::strerror(err));
-    }
-    ::close(fd);
-
-    fs::permissions(path, fs::perms::owner_write, fs::perm_options::remove, ec);
+    if (!existed) sync_dir(path.parent_path()); // first append created the file
 }
 
 } // namespace

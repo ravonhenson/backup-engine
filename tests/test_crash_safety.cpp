@@ -6,26 +6,16 @@
 
 #include <filesystem>
 #include <fstream>
-#include <random>
 
 #include "chunker.h"
 #include "fs_util.h"
 #include "oplog.h"
 #include "repo.h"
 #include "snapshot.h"
+#include "test_util.h"
 
 namespace fs = std::filesystem;
-
-namespace {
-
-std::vector<uint8_t> pseudo_random_bytes(std::size_t n, uint32_t seed) {
-    std::vector<uint8_t> data(n);
-    std::mt19937 rng(seed);
-    for (auto& b : data) b = static_cast<uint8_t>(rng() % 256);
-    return data;
-}
-
-} // namespace
+using test_util::pseudo_random_bytes;
 
 // Forks a child that runs create_snapshot() and kills itself (via
 // raise(SIGKILL) from inside a checkpoint hook, not a clean exit) at an
@@ -38,9 +28,8 @@ std::vector<uint8_t> pseudo_random_bytes(std::size_t n, uint32_t seed) {
 // randomized timing, since fork+kill is cheap and this is fully
 // deterministic -- no flakiness from scheduling luck.
 TEST(CrashSafety, RecoversFromKillAtEveryObjectBoundary) {
-    std::mt19937_64 rng{std::random_device{}()};
-    fs::path root = fs::temp_directory_path() / ("backup_engine_crash_test_" + std::to_string(rng()));
-    fs::create_directories(root);
+    test_util::TempDir tmp("backup_engine_crash_test_");
+    const fs::path& root = tmp.path();
     fs::path src_path = root / "src";
     fs::create_directories(src_path);
 
@@ -108,8 +97,6 @@ TEST(CrashSafety, RecoversFromKillAtEveryObjectBoundary) {
         }
     }
 
-    std::error_code ec;
-    fs::remove_all(root, ec);
 }
 
 // A crash during Repo::init() itself (specifically, before the atomic
@@ -118,9 +105,8 @@ TEST(CrashSafety, RecoversFromKillAtEveryObjectBoundary) {
 // rename means the config file is either fully absent or fully present,
 // never partial.
 TEST(CrashSafety, RepoConfigIsNeverPartiallyWritten) {
-    std::mt19937_64 rng{std::random_device{}()};
-    fs::path root = fs::temp_directory_path() / ("backup_engine_crash_init_test_" + std::to_string(rng()));
-    fs::create_directories(root);
+    test_util::TempDir tmp("backup_engine_crash_init_test_");
+    const fs::path& root = tmp.path();
     fs::path repo_path = root / "repo";
 
     Repo::init(repo_path);
@@ -134,6 +120,4 @@ TEST(CrashSafety, RepoConfigIsNeverPartiallyWritten) {
 
     EXPECT_NO_THROW(Repo::open(repo_path));
 
-    std::error_code ec;
-    fs::remove_all(root, ec);
 }

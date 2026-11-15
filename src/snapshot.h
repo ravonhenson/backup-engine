@@ -12,9 +12,18 @@
 #include "oplog.h"
 #include "repo.h"
 
+// Operations-log event types this module writes and reads. Named once so
+// a typo is a compile error rather than an event that silently never
+// matches.
+namespace snapshot_events {
+inline constexpr const char* kCreated = "snapshot_created";
+inline constexpr const char* kDeleted = "snapshot_deleted";
+} // namespace snapshot_events
+
 // "What snapshots exist" is sourced from the tamper-evident operations
-// log (oplog.h) -- "snapshot_created" events with no later matching
-// "snapshot_deleted" event for the same digest.
+// log (oplog.h) -- snapshot_created events for digests that have no
+// snapshot_deleted event. Deletion is permanent, and a digest created
+// more than once is listed once.
 struct SnapshotListEntry {
     uint64_t created_at = 0;
     Digest digest;
@@ -61,7 +70,7 @@ SnapshotResult create_snapshot(Repo& repo, const std::filesystem::path& source_r
 // ObjectStore::get() before it's written out. Throws if the snapshot has
 // been deleted (see delete_snapshot) -- deletion is a real access-control
 // boundary, not just a listing filter.
-void restore_snapshot(Repo& repo, const Digest& snapshot_digest, const std::filesystem::path& dest_root);
+void restore_snapshot(const Repo& repo,const Digest& snapshot_digest, const std::filesystem::path& dest_root);
 
 std::vector<SnapshotListEntry> list_snapshots(const Repo& repo);
 
@@ -89,7 +98,7 @@ struct VerifySnapshotResult {
     std::string message;
 };
 
-VerifySnapshotResult verify_snapshot(Repo& repo, const Digest& snapshot_digest);
+VerifySnapshotResult verify_snapshot(const Repo& repo,const Digest& snapshot_digest);
 
 // Generates a self-contained Merkle inclusion proof that chunk_digest is
 // part of snapshot_digest's content. Be precise about where the
@@ -104,5 +113,5 @@ VerifySnapshotResult verify_snapshot(Repo& repo, const Digest& snapshot_digest);
 // more than once (deduplicated within the same snapshot), proves
 // whichever occurrence is encountered first while walking the manifest
 // in order.
-std::optional<MerkleInclusionProof> prove_chunk_inclusion(Repo& repo, const Digest& snapshot_digest,
+std::optional<MerkleInclusionProof> prove_chunk_inclusion(const Repo& repo, const Digest& snapshot_digest,
                                                            const Digest& chunk_digest);

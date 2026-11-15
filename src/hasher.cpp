@@ -11,3 +11,13 @@ std::unique_ptr<IHasher> make_hasher(HashAlgo algo) {
     }
     throw std::runtime_error("unknown hash algorithm");
 }
+
+Digest hash_bytes(HashAlgo algo, const uint8_t* data, std::size_t len) {
+    auto hasher = make_hasher(algo);
+    hasher->update(data, len);
+    return hasher->finalize();
+}
+
+Digest hash_bytes(HashAlgo algo, const std::vector<uint8_t>& data) {
+    return hash_bytes(algo, data.data(), data.size());
+}

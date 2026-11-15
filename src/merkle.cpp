@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include "hasher.h"
+#include "text_format.h"
 
 namespace {
 
@@ -149,34 +150,33 @@ std::optional<MerkleInclusionProof> MerkleInclusionProof::deserialize(const std:
             continue;
         }
 
-        auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        std::string key = line.substr(0, eq);
-        std::string value = line.substr(eq + 1);
+        auto kv = split_key_value(line);
+        if (!kv) continue;
+        auto [key, value] = *kv;
 
-        try {
-            if (key == "format_version") {
-                if (value != "1") return std::nullopt;
-                have_version = true;
-            } else if (key == "root") {
-                auto digest = Digest::parse(value);
-                if (!digest) return std::nullopt;
-                proof.root = *digest;
-                have_root = true;
-            } else if (key == "leaf") {
-                auto digest = Digest::parse(value);
-                if (!digest) return std::nullopt;
-                proof.leaf = *digest;
-                have_leaf = true;
-            } else if (key == "leaf_index") {
-                proof.leaf_index = std::stoull(value);
-                have_index = true;
-            } else if (key == "leaf_count") {
-                proof.leaf_count = std::stoull(value);
-                have_count = true;
-            }
-        } catch (const std::exception&) {
-            return std::nullopt;
+        if (key == "format_version") {
+            if (value != "1") return std::nullopt;
+            have_version = true;
+        } else if (key == "root") {
+            auto digest = Digest::parse(value);
+            if (!digest) return std::nullopt;
+            proof.root = *digest;
+            have_root = true;
+        } else if (key == "leaf") {
+            auto digest = Digest::parse(value);
+            if (!digest) return std::nullopt;
+            proof.leaf = *digest;
+            have_leaf = true;
+        } else if (key == "leaf_index") {
+            auto n = parse_u64(value);
+            if (!n) return std::nullopt;
+            proof.leaf_index = static_cast<std::size_t>(*n);
+            have_index = true;
+        } else if (key == "leaf_count") {
+            auto n = parse_u64(value);
+            if (!n) return std::nullopt;
+            proof.leaf_count = static_cast<std::size_t>(*n);
+            have_count = true;
         }
     }
 
