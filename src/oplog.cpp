@@ -26,6 +26,19 @@ Digest genesis_digest(HashAlgo algo) {
     return d;
 }
 
+// A log line is space-separated fields read back with `>>`, so each of
+// event_type/event_data must be exactly one non-empty token: a space
+// would shift every later field, a newline would split the entry in two,
+// and an empty field would make `>>` read the next field in its place.
+// Rejects all whitespace and ASCII control characters.
+bool is_log_token(const std::string& s) {
+    if (s.empty()) return false;
+    for (unsigned char c : s) {
+        if (c <= 0x20 || c == 0x7f) return false;
+    }
+    return true;
+}
+
 Digest compute_entry_hash(HashAlgo algo, const OperationEntry& e) {
     std::ostringstream canonical;
     canonical << e.seq << '\n' << e.timestamp << '\n' << e.event_type << '\n' << e.event_data << '\n'
@@ -98,6 +111,14 @@ void append_line_durably(const fs::path& path, const std::string& line) {
 } // namespace
 
 OperationEntry append_operation(Repo& repo, const std::string& event_type, const std::string& event_data) {
+    // Checked before any I/O, so a rejected event never touches the log.
+    if (!is_log_token(event_type)) {
+        throw std::invalid_argument("invalid operations-log event_type: \"" + event_type + "\"");
+    }
+    if (!is_log_token(event_data)) {
+        throw std::invalid_argument("invalid operations-log event_data: \"" + event_data + "\"");
+    }
+
     auto existing = read_operations(repo);
 
     OperationEntry entry;

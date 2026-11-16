@@ -48,6 +48,12 @@ struct VerifyLogResult {
 // exists. General-purpose: create_snapshot calls this with
 // "snapshot_created", and a future event kind (deletion, retention
 // change) is just another call site, not a format change.
+//
+// event_type and event_data must each be a single non-empty token with
+// no whitespace or control characters (the on-disk line is
+// space-separated); anything else throws std::invalid_argument without
+// writing. Structured data should use a token-safe form such as
+// "key=value,key=value".
 OperationEntry append_operation(Repo& repo, const std::string& event_type, const std::string& event_data);
 
 std::vector<OperationEntry> read_operations(const Repo& repo);

@@ -130,3 +130,33 @@ TEST_F(OpLogTest, VerifyDetectsAReorderedEntry) {
     ASSERT_TRUE(result.first_bad_seq.has_value());
     EXPECT_EQ(*result.first_bad_seq, 2u);
 }
+
+// Each field is stored as one space-separated token, so anything that
+// can't round-trip through that format must be rejected up front --
+// and rejected without writing anything to the log.
+TEST_F(OpLogTest, RejectsFieldsThatCannotRoundTrip) {
+    Repo repo = Repo::open(repo_path_);
+    append_operation(repo, "test_event", "ok");
+
+    const std::string bad_values[] = {"", "has space", "has\nnewline", "has\ttab", std::string("nul\0x", 5)};
+    for (const auto& bad : bad_values) {
+        EXPECT_THROW(append_operation(repo, "test_event", bad), std::invalid_argument);
+        EXPECT_THROW(append_operation(repo, bad, "ok"), std::invalid_argument);
+    }
+
+    auto entries = read_operations(repo);
+    ASSERT_EQ(entries.size(), 1u);
+    EXPECT_TRUE(verify_operations_log(repo).ok);
+}
+
+// The kind of structured value future events (retention policy,
+// checkpoints) will use: a single token that round-trips exactly.
+TEST_F(OpLogTest, StructuredTokenDataRoundTrips) {
+    Repo repo = Repo::open(repo_path_);
+    const std::string data = "min_age_days=2555,scope=all";
+    append_operation(repo, "test_event", data);
+
+    auto entries = read_operations(repo);
+    ASSERT_EQ(entries.size(), 1u);
+    EXPECT_EQ(entries[0].event_data, data);
+}
