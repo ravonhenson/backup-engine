@@ -7,11 +7,11 @@
 #include <filesystem>
 #include <fstream>
 
-#include "chunker.h"
-#include "fs_util.h"
-#include "oplog.h"
-#include "repo.h"
-#include "snapshot.h"
+#include "snapshot/chunker.h"
+#include "util/fs_util.h"
+#include "log/oplog.h"
+#include "storage/repo.h"
+#include "snapshot/snapshot.h"
 #include "test_util.h"
 
 namespace fs = std::filesystem;

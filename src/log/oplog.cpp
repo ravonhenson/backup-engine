@@ -1,4 +1,4 @@
-#include "oplog.h"
+#include "log/oplog.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -9,8 +9,8 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "fs_util.h"
-#include "hasher.h"
+#include "util/fs_util.h"
+#include "crypto/hasher.h"
 
 namespace fs = std::filesystem;
 
@@ -167,6 +167,13 @@ VerifyLogResult verify_operations_log(const Repo& repo) {
 
     for (std::size_t i = 0; i < entries.size(); ++i) {
         const auto& e = entries[i];
+
+        // seq is covered by entry_hash, so it can't be altered without
+        // recomputing the chain -- but a chain built with a gap (0, 1, 3)
+        // would otherwise verify. seq must equal the entry's position.
+        if (e.seq != i) {
+            return {false, i, e.seq, "seq " + std::to_string(e.seq) + " found at position " + std::to_string(i)};
+        }
 
         if (e.prev_hash != expected_prev) {
             return {false, i, e.seq, "prev_hash does not match the preceding entry's hash"};

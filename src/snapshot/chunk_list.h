@@ -4,7 +4,7 @@
 #include <optional>
 #include <vector>
 
-#include "digest.h"
+#include "crypto/digest.h"
 
 // One file's content, as an ordered sequence of chunk digests. This
 // object is itself content-addressed and stored like any other object;

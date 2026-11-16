@@ -10,6 +10,8 @@ verifiable restores. Snapshot-based (not continuous data protection).
 - Snapshot backup/restore preserving directory structure and file permissions
 - Content-defined chunking (FastCDC) for deduplication across file versions
 - Tamper-evident, hash-chained operations log with an explicit audit command
+- Ed25519-signed log checkpoints (key kept off the backup host) that detect
+  history rewrites and log truncation
 - Crash-safe writes throughout the commit path
 - Snapshot deletion (tombstone-based, underlying data never silently destroyed)
 - Merkle-tree-based snapshot verification and offline-verifiable inclusion proofs
@@ -38,6 +40,10 @@ backup_engine snapshots <repo>
 backup_engine delete <repo> <snapshot-digest>
 
 backup_engine verify-log <repo>
+backup_engine head <repo>
+backup_engine keygen <secret-key-file> <public-key-file>
+backup_engine sign-checkpoint <secret-key-file> <statement-file>
+backup_engine verify-checkpoint <repo> <checkpoint-file> <public-key-file>
 backup_engine verify-snapshot <repo> <snapshot-digest>
 backup_engine prove <repo> <snapshot-digest> <chunk-digest> <proof-output-file>
 backup_engine verify-proof <proof-file>
@@ -58,3 +64,30 @@ diff -r /tmp/src /tmp/dest
 ./build/backup_engine verify-log /tmp/repo
 ./build/backup_engine verify-snapshot /tmp/repo "$SNAP"
 ```
+
+## Signed checkpoints
+
+`verify-log` proves the operations log is internally consistent, but someone
+with write access to the repo could still cut entries off the end, or rewrite
+history and recompute every hash. A signed checkpoint pins down the log's size
+and head hash with a key that never lives on the backup host:
+
+```sh
+# Once, on a separate machine that will hold the signing key:
+./build/backup_engine keygen signing.key signing.pub
+
+# On the backup host: describe the log as it is now.
+./build/backup_engine head /tmp/repo > statement.txt
+
+# On the signing machine: sign it. No repo access needed.
+./build/backup_engine sign-checkpoint signing.key statement.txt > checkpoint.txt
+
+# Store checkpoint.txt somewhere other than the backup host. Later, anyone
+# with signing.pub can check the log hasn't been rewritten or truncated:
+./build/backup_engine verify-checkpoint /tmp/repo checkpoint.txt signing.pub
+```
+
+Signatures are standard Ed25519 (RFC 8032) over the exact bytes of the
+statement's first four lines, so any Ed25519 implementation can check them
+too. Entries added after a checkpoint are covered only by the hash chain until
+the next checkpoint is signed.

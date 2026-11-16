@@ -3,11 +3,13 @@
 #include <string>
 #include <vector>
 
-#include "fs_util.h"
-#include "merkle.h"
-#include "oplog.h"
-#include "repo.h"
-#include "snapshot.h"
+#include "log/checkpoint.h"
+#include "util/fs_util.h"
+#include "crypto/merkle.h"
+#include "log/oplog.h"
+#include "storage/repo.h"
+#include "crypto/signing.h"
+#include "snapshot/snapshot.h"
 
 namespace {
 
@@ -21,6 +23,10 @@ void print_usage() {
               << "  backup_engine restore <repo> <snapshot-digest> <dest-dir>\n"
               << "  backup_engine snapshots <repo>\n"
               << "  backup_engine verify-log <repo>\n"
+              << "  backup_engine head <repo>   (print a checkpoint statement for the current log)\n"
+              << "  backup_engine keygen <secret-key-file> <public-key-file>   (no repo needed)\n"
+              << "  backup_engine sign-checkpoint <secret-key-file> <statement-file>   (no repo needed)\n"
+              << "  backup_engine verify-checkpoint <repo> <checkpoint-file> <public-key-file>\n"
               << "  backup_engine delete <repo> <snapshot-digest>\n"
               << "  backup_engine verify-snapshot <repo> <snapshot-digest>\n"
               << "  backup_engine prove <repo> <snapshot-digest> <chunk-digest> <proof-output-file>\n"
@@ -128,6 +134,52 @@ int main(int argc, char** argv) {
             std::cout << "FAILED at seq " << (result.first_bad_seq ? std::to_string(*result.first_bad_seq) : "?")
                        << ": " << result.message << "\n";
             return 1;
+        }
+
+        if (cmd == "head" && args.size() == 2) {
+            Repo repo = Repo::open(args[1]);
+            std::cout << current_checkpoint_statement(repo).serialize();
+            return 0;
+        }
+
+        if (cmd == "keygen" && args.size() == 3) {
+            SecretKey secret = SecretKey::generate();
+            write_key_pair(secret, args[1], args[2]);
+            std::cout << secret.public_key().key_id() << "\n";
+            return 0;
+        }
+
+        if (cmd == "sign-checkpoint" && args.size() == 3) {
+            auto key_text = read_file(args[1]);
+            auto key = SecretKey::parse(std::string(key_text.begin(), key_text.end()));
+            if (!key) throw std::runtime_error("not a valid secret key file: " + args[1]);
+
+            auto statement_text = read_file(args[2]);
+            auto statement = CheckpointStatement::parse(std::string(statement_text.begin(), statement_text.end()));
+            if (!statement) {
+                throw std::runtime_error("not a valid checkpoint statement (must be exactly what `head` printed): " +
+                                         args[2]);
+            }
+
+            std::cout << sign_checkpoint(*statement, *key).serialize();
+            return 0;
+        }
+
+        if (cmd == "verify-checkpoint" && args.size() == 4) {
+            Repo repo = Repo::open(args[1]);
+            auto checkpoint_text = read_file(args[2]);
+            auto checkpoint = SignedCheckpoint::parse(std::string(checkpoint_text.begin(), checkpoint_text.end()));
+            if (!checkpoint) {
+                std::cout << "FAILED (could not parse signed checkpoint file)\n";
+                return 1;
+            }
+            auto key_text = read_file(args[3]);
+            auto trusted = PublicKey::parse(std::string(key_text.begin(), key_text.end()));
+            if (!trusted) throw std::runtime_error("not a valid public key file: " + args[3]);
+
+            VerifyCheckpointResult result = verify_checkpoint(repo, *checkpoint, *trusted);
+            std::cout << (result.ok ? "OK: " : "FAILED: ") << result.message << "\n";
+            return result.ok ? 0 : 1;
         }
 
         if (cmd == "verify-snapshot" && args.size() == 3) {

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "text_format.h"
+#include "util/text_format.h"
 
 TEST(TextFormat, SplitKeyValueSplitsAtFirstEquals) {
     auto kv = split_key_value("source_root=/a=b/c");
@@ -32,4 +32,18 @@ TEST(TextFormat, ParseU64RejectsAnythingButExactDigits) {
     EXPECT_FALSE(parse_u64("12abc"));                // stoull would give 12
     EXPECT_FALSE(parse_u64("18446744073709551616")); // overflow
     EXPECT_FALSE(parse_u64("8", 8));
+}
+
+TEST(TextFormat, HexRoundTripsAndIsStrict) {
+    const uint8_t bytes[] = {0x00, 0x7f, 0xab, 0xff};
+    EXPECT_EQ(to_hex(bytes, 4), "007fabff");
+
+    auto back = from_hex("007fabff", 4);
+    ASSERT_TRUE(back);
+    EXPECT_EQ(*back, std::vector<uint8_t>(bytes, bytes + 4));
+
+    EXPECT_FALSE(from_hex("007FABFF", 4)); // uppercase
+    EXPECT_FALSE(from_hex("007fab", 4));   // too short
+    EXPECT_FALSE(from_hex("007fabff00", 4)); // too long
+    EXPECT_FALSE(from_hex("007fabfg", 4)); // not hex
 }

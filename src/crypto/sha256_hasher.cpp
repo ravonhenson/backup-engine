@@ -1,4 +1,4 @@
-#include "sha256_hasher.h"
+#include "crypto/sha256_hasher.h"
 
 SHA256Hasher::SHA256Hasher() {
     sha256_init(&ctx_);

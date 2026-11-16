@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "digest.h"
-#include "merkle.h"
-#include "oplog.h"
-#include "repo.h"
+#include "crypto/digest.h"
+#include "crypto/merkle.h"
+#include "log/oplog.h"
+#include "storage/repo.h"
 
 // Operations-log event types this module writes and reads. Named once so
 // a typo is a compile error rather than an event that silently never

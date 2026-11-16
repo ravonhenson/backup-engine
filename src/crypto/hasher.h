@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-#include "digest.h"
+#include "crypto/digest.h"
 
 // Strategy interface: each concrete algorithm gets its own IHasher
 // implementation, selected by HashAlgo so a second algorithm is a new

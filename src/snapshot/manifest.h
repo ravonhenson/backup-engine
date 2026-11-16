@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "digest.h"
+#include "crypto/digest.h"
 
 // A directory entry backed up as part of a snapshot. Only regular files
 // and directories are represented today; symlinks and other special

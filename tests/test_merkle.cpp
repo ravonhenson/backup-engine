@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "hasher.h"
-#include "merkle.h"
+#include "crypto/hasher.h"
+#include "crypto/merkle.h"
 
 namespace {
 

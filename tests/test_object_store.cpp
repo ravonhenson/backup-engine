@@ -7,8 +7,8 @@
 #include <fstream>
 #include <vector>
 
-#include "errors.h"
-#include "object_store.h"
+#include "util/errors.h"
+#include "storage/object_store.h"
 #include "test_util.h"
 
 namespace fs = std::filesystem;

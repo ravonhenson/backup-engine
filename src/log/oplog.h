@@ -5,27 +5,28 @@
 #include <string>
 #include <vector>
 
-#include "digest.h"
-#include "repo.h"
+#include "crypto/digest.h"
+#include "storage/repo.h"
 
 // One entry in the repo's tamper-evident operations log. Each entry
 // commits to the previous entry's hash (prev_hash) as well as its own
 // fields, forming a hash chain: altering any past entry without also
 // recomputing every entry after it makes the chain fail to verify.
 //
-// Honest limitation: this detects the realistic threat (someone edits an
-// old entry through the normal file format without regenerating the
-// whole suffix), and it detects reordering or deletion of an entry from
-// the middle. It does NOT by itself detect an attacker with full
-// filesystem access truncating the *tail* of the log (deleting the most
-// recent entries) -- a shorter chain that ends earlier is still
-// internally consistent, because nothing inside the log records how long
-// it used to be. Closing that gap needs an externally-held checkpoint of
-// a past head (the classic problem Certificate Transparency solves with
-// independent gossiping monitors); this layer surfaces the head hash on
-// every append specifically so an operator has something to cross-check
-// against an independent record later, but doesn't implement that
-// external anchoring itself.
+// What the chain alone detects: editing an old entry without regenerating
+// the whole suffix, and reordering or deleting an entry from the middle.
+//
+// What it can't detect alone: an attacker with write access who either
+// truncates the *tail* (a shorter chain is still internally consistent --
+// nothing inside the log records how long it used to be) or rewrites
+// history and recomputes every hash after the edit.
+//
+// Signed checkpoints (checkpoint.h) close both gaps for everything up to
+// the most recent checkpoint: a statement of (log_size, head_hash), signed
+// with a key kept off the repo host and stored elsewhere. verify_checkpoint
+// then fails if the log is now shorter than log_size, or if the entry at
+// log_size-1 no longer has that hash. Entries appended after the latest
+// checkpoint remain covered only by the chain until the next checkpoint.
 struct OperationEntry {
     uint64_t seq = 0;
     uint64_t timestamp = 0;

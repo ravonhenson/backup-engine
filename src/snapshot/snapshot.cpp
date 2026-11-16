@@ -1,15 +1,15 @@
-#include "snapshot.h"
+#include "snapshot/snapshot.h"
 
 #include <algorithm>
 #include <functional>
 #include <stdexcept>
 #include <unordered_set>
 
-#include "chunk_list.h"
-#include "chunker.h"
-#include "fs_util.h"
-#include "manifest.h"
-#include "merkle.h"
+#include "snapshot/chunk_list.h"
+#include "snapshot/chunker.h"
+#include "util/fs_util.h"
+#include "snapshot/manifest.h"
+#include "crypto/merkle.h"
 
 namespace fs = std::filesystem;
 

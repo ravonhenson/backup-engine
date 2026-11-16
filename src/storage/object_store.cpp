@@ -1,12 +1,12 @@
-#include "object_store.h"
+#include "storage/object_store.h"
 
 #include <fstream>
 #include <stdexcept>
 #include <system_error>
 
-#include "errors.h"
-#include "fs_util.h"
-#include "hasher.h"
+#include "util/errors.h"
+#include "util/fs_util.h"
+#include "crypto/hasher.h"
 
 namespace fs = std::filesystem;
 

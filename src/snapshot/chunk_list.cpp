@@ -1,9 +1,9 @@
-#include "chunk_list.h"
+#include "snapshot/chunk_list.h"
 
 #include <sstream>
 #include <string_view>
 
-#include "text_format.h"
+#include "util/text_format.h"
 
 std::vector<uint8_t> ChunkList::serialize() const {
     std::ostringstream out;

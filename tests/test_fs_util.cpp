@@ -5,7 +5,7 @@
 
 #include <filesystem>
 
-#include "fs_util.h"
+#include "util/fs_util.h"
 #include "test_util.h"
 
 namespace fs = std::filesystem;

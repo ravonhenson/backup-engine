@@ -1,8 +1,8 @@
-#include "hasher.h"
+#include "crypto/hasher.h"
 
 #include <stdexcept>
 
-#include "sha256_hasher.h"
+#include "crypto/sha256_hasher.h"
 
 std::unique_ptr<IHasher> make_hasher(HashAlgo algo) {
     switch (algo) {

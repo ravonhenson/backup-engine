@@ -2,8 +2,8 @@
 
 #include <filesystem>
 
-#include "oplog.h"
-#include "repo.h"
+#include "log/oplog.h"
+#include "storage/repo.h"
 #include "test_util.h"
 
 namespace fs = std::filesystem;

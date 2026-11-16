@@ -2,8 +2,8 @@
 
 #include <vector>
 
-#include "digest.h"
-#include "hasher.h"
+#include "crypto/digest.h"
+#include "crypto/hasher.h"
 #include "test_util.h"
 
 using test_util::to_bytes;

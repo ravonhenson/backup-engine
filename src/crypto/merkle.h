@@ -5,7 +5,7 @@
 #include <optional>
 #include <vector>
 
-#include "digest.h"
+#include "crypto/digest.h"
 
 // RFC 6962 (Certificate Transparency) style Merkle Tree Hash, with domain
 // separation between leaf and internal-node hashing (a 0x00 vs 0x01

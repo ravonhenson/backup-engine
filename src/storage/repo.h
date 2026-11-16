@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-#include "object_store.h"
+#include "storage/object_store.h"
 
 // Owns a repo's on-disk root: the objects directory and a small config
 // file declaring the format version and default write algorithm, so a

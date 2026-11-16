@@ -16,14 +16,14 @@
 #include <fstream>
 #include <string>
 
-#include "chunk_list.h"
-#include "fs_util.h"
-#include "hasher.h"
-#include "manifest.h"
-#include "merkle.h"
-#include "oplog.h"
-#include "repo.h"
-#include "snapshot.h"
+#include "snapshot/chunk_list.h"
+#include "util/fs_util.h"
+#include "crypto/hasher.h"
+#include "snapshot/manifest.h"
+#include "crypto/merkle.h"
+#include "log/oplog.h"
+#include "storage/repo.h"
+#include "snapshot/snapshot.h"
 #include "test_util.h"
 
 namespace fs = std::filesystem;
@@ -213,4 +213,24 @@ TEST(Characterization, WriteFileReportsShortWrite) {
     signal(SIGXFSZ, old_handler);
 
     EXPECT_TRUE(threw);
+}
+
+// Every hash in this log is correct, but seq jumps from 0 to 2. Hash
+// for the second entry computed independently with Python's hashlib.
+TEST(Characterization, OperationsLogWithSeqGapFailsVerification) {
+    TempDir tmp;
+    Repo repo = Repo::init(tmp.path() / "repo");
+
+    const std::string e0 = "sha256:dbb0d567013f00420c7dd25695a75e491c69f8640418c21384e1ce7480a99186";
+    const std::string e2 = "sha256:a210d996e9fe411d1d9f24183afde663e24c30d6d87de539e9782db6e96059cf";
+    {
+        std::ofstream log(repo.root() / "operations.log", std::ios::binary);
+        log << "0 1700000000 snapshot_created " << kAB << " " << kZero << " " << e0 << "\n";
+        log << "2 1700000001 snapshot_deleted " << kAB << " " << e0 << " " << e2 << "\n";
+    }
+
+    VerifyLogResult result = verify_operations_log(repo);
+    EXPECT_FALSE(result.ok);
+    ASSERT_TRUE(result.first_bad_seq);
+    EXPECT_EQ(*result.first_bad_seq, 2u);
 }

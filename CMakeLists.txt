@@ -5,24 +5,34 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Layers, lowest first. Each may include only from layers above it in
+# this list: util <- crypto <- storage <- log <- snapshot <- main.cpp.
 add_library(backup_engine_core STATIC
+    src/util/fs_util.cpp
+    src/util/text_format.cpp
+
+    src/crypto/digest.cpp
+    src/crypto/hasher.cpp
+    src/crypto/sha256_hasher.cpp
+    src/crypto/merkle.cpp
+    src/crypto/signing.cpp
+
+    src/storage/object_store.cpp
+    src/storage/repo.cpp
+
+    src/log/oplog.cpp
+    src/log/checkpoint.cpp
+
+    src/snapshot/chunker.cpp
+    src/snapshot/chunk_list.cpp
+    src/snapshot/manifest.cpp
+    src/snapshot/snapshot.cpp
+
     third_party/sha256/sha256.c
-    src/digest.cpp
-    src/hasher.cpp
-    src/sha256_hasher.cpp
-    src/object_store.cpp
-    src/repo.cpp
-    src/fs_util.cpp
-    src/manifest.cpp
-    src/snapshot.cpp
-    src/chunker.cpp
-    src/chunk_list.cpp
-    src/oplog.cpp
-    src/merkle.cpp
-    src/text_format.cpp
     third_party/monocypher/monocypher.c
     third_party/monocypher/monocypher-ed25519.c
 )
+# Project headers are included by path from src/ (e.g. "crypto/digest.h").
 target_include_directories(backup_engine_core PUBLIC
     src
     third_party/sha256
@@ -60,6 +70,8 @@ if(BACKUP_ENGINE_BUILD_TESTS)
         tests/test_fs_util.cpp
         tests/test_text_format.cpp
         tests/test_ed25519.cpp
+        tests/test_checkpoint.cpp
+        tests/test_signing.cpp
     )
     target_link_libraries(unit_tests PRIVATE backup_engine_core GTest::gtest_main)
 

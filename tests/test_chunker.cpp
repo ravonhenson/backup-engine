@@ -4,8 +4,8 @@
 #include <set>
 #include <vector>
 
-#include "chunker.h"
-#include "hasher.h"
+#include "snapshot/chunker.h"
+#include "crypto/hasher.h"
 #include "test_util.h"
 
 using test_util::pseudo_random_bytes;

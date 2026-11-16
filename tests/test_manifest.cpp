@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "manifest.h"
+#include "snapshot/manifest.h"
 
 namespace {
 

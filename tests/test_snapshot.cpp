@@ -4,13 +4,13 @@
 #include <fstream>
 #include <random>
 
-#include "chunk_list.h"
-#include "fs_util.h"
-#include "manifest.h"
-#include "merkle.h"
-#include "oplog.h"
-#include "repo.h"
-#include "snapshot.h"
+#include "snapshot/chunk_list.h"
+#include "util/fs_util.h"
+#include "snapshot/manifest.h"
+#include "crypto/merkle.h"
+#include "log/oplog.h"
+#include "storage/repo.h"
+#include "snapshot/snapshot.h"
 #include "test_util.h"
 
 namespace fs = std::filesystem;

@@ -1,10 +1,10 @@
-#include "merkle.h"
+#include "crypto/merkle.h"
 
 #include <optional>
 #include <sstream>
 
-#include "hasher.h"
-#include "text_format.h"
+#include "crypto/hasher.h"
+#include "util/text_format.h"
 
 namespace {
 

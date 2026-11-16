@@ -1,8 +1,8 @@
-#include "manifest.h"
+#include "snapshot/manifest.h"
 
 #include <sstream>
 
-#include "text_format.h"
+#include "util/text_format.h"
 
 namespace {
 

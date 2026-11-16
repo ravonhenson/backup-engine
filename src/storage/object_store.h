@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <vector>
 
-#include "digest.h"
+#include "crypto/digest.h"
 
 // Result of a put(): the object's digest, and whether this call actually
 // wrote new bytes or the content already existed (content-addressing

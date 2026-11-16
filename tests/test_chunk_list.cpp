@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "chunk_list.h"
+#include "snapshot/chunk_list.h"
 
 namespace {
 

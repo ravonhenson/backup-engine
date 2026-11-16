@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hasher.h"
+#include "crypto/hasher.h"
 #include "sha256.h"
 
 class SHA256Hasher : public IHasher {
