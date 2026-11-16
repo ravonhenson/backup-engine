@@ -20,10 +20,13 @@ add_library(backup_engine_core STATIC
     src/oplog.cpp
     src/merkle.cpp
     src/text_format.cpp
+    third_party/monocypher/monocypher.c
+    third_party/monocypher/monocypher-ed25519.c
 )
 target_include_directories(backup_engine_core PUBLIC
     src
     third_party/sha256
+    third_party/monocypher
 )
 
 add_executable(backup_engine src/main.cpp)
@@ -56,6 +59,7 @@ if(BACKUP_ENGINE_BUILD_TESTS)
         tests/test_characterization.cpp
         tests/test_fs_util.cpp
         tests/test_text_format.cpp
+        tests/test_ed25519.cpp
     )
     target_link_libraries(unit_tests PRIVATE backup_engine_core GTest::gtest_main)
 
