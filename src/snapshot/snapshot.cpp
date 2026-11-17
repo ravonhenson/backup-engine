@@ -132,6 +132,7 @@ SnapshotResult create_snapshot(Repo& repo, const fs::path& source_root, const Cr
     // verification/proof generation compute the root via the exact same
     // code path and can never silently diverge.
     manifest.merkle_root = merkle_root(repo.default_algo(), gather_snapshot_chunk_digests(repo, manifest));
+    manifest.entries_root = manifest_entries_root(repo.default_algo(), manifest.entries);
 
     Digest snapshot_digest = repo.objects().put(manifest.serialize()).digest;
     if (checkpoint) checkpoint();
@@ -274,6 +275,10 @@ VerifySnapshotResult verify_snapshot(const Repo& repo, const Digest& snapshot_di
     Digest recomputed = merkle_root(repo.default_algo(), leaves);
     if (recomputed != manifest.merkle_root) {
         return {false, chunks_checked, "recomputed merkle root does not match the manifest's recorded root"};
+    }
+    if (manifest.format_version >= 3 &&
+        manifest_entries_root(repo.default_algo(), manifest.entries) != manifest.entries_root) {
+        return {false, chunks_checked, "recomputed entries root does not match the manifest's recorded root"};
     }
 
     return {true, chunks_checked, "ok"};

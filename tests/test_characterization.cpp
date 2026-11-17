@@ -49,8 +49,11 @@ const std::string kEF = "sha256:" + [] { std::string s; for (int i = 0; i < 32; 
 
 } // namespace
 
+// Version 2 is what every snapshot written before v3 uses; its bytes are
+// its snapshot ID, so it must keep reading and re-serializing exactly.
 TEST(Characterization, ManifestSerializationIsByteStable) {
     Manifest m;
+    m.format_version = 2;
     m.created_at = 1700000000;
     m.source_root = "/src root";
     m.merkle_root = digest_of_repeated("ab");
@@ -69,6 +72,38 @@ TEST(Characterization, ManifestSerializationIsByteStable) {
 
     auto parsed = Manifest::deserialize(to_bytes(expected));
     ASSERT_TRUE(parsed);
+    EXPECT_EQ(as_string(parsed->serialize()), expected);
+}
+
+// Version 3 adds entries_root: the RFC 6962 root over H(entry line) for
+// each entry. Expected root computed independently with Python's hashlib.
+TEST(Characterization, ManifestV3SerializationIsByteStable) {
+    Manifest m;
+    m.created_at = 1700000000;
+    m.source_root = "/src root";
+    m.merkle_root = digest_of_repeated("ab");
+    m.entries.push_back({true, 0755, 0, Digest{}, "."});
+    m.entries.push_back({false, 0644, 5, digest_of_repeated("cd"), "dir/a file.txt"});
+    m.entries.push_back({true, 0700, 0, Digest{}, "dir"});
+    m.entries_root = manifest_entries_root(HashAlgo::SHA256, m.entries);
+
+    const std::string expected_entries_root =
+        "sha256:ed3276436ae74391eee3b239e8944fd108eddac8194175b17f02f89529837fd2";
+    EXPECT_EQ(m.entries_root.to_string(), expected_entries_root);
+
+    const std::string expected = "format_version=3\n"
+                                 "created_at=1700000000\n"
+                                 "source_root=/src root\n"
+                                 "merkle_root=" + kAB + "\n"
+                                 "entries_root=" + expected_entries_root + "\n"
+                                 "D 755 .\n"
+                                 "F 644 5 " + kCD + " dir/a file.txt\n"
+                                 "D 700 dir\n";
+    EXPECT_EQ(as_string(m.serialize()), expected);
+
+    auto parsed = Manifest::deserialize(to_bytes(expected));
+    ASSERT_TRUE(parsed);
+    EXPECT_EQ(parsed->format_version, 3u);
     EXPECT_EQ(as_string(parsed->serialize()), expected);
 }
 

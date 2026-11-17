@@ -430,3 +430,41 @@ TEST_F(SnapshotTest, RecreatedDigestIsListedOnce) {
     EXPECT_EQ(listed[0].digest, first.digest);
     EXPECT_EQ(listed[0].created_at, first.operation.timestamp);
 }
+
+// New snapshots are written as manifest v3, with an entries_root that
+// matches their entries, and verify_snapshot checks it.
+TEST_F(SnapshotTest, NewSnapshotsUseManifestV3WithMatchingEntriesRoot) {
+    write_text(src_path_ / "a.txt", "a");
+    write_text(src_path_ / "sub" / "b.txt", "b");
+    Repo repo = Repo::open(repo_path_);
+    Digest snapshot = create_snapshot(repo, src_path_).digest;
+
+    auto manifest = Manifest::deserialize(repo.objects().get(snapshot));
+    ASSERT_TRUE(manifest);
+    EXPECT_EQ(manifest->format_version, 3u);
+    EXPECT_EQ(manifest->entries_root, manifest_entries_root(HashAlgo::SHA256, manifest->entries));
+    EXPECT_TRUE(verify_snapshot(repo, snapshot).ok);
+}
+
+// Snapshots written before manifest v3 must keep working. Builds a real
+// v2 manifest (same entries and chunks, no entries_root) in the repo, then
+// verifies and restores it.
+TEST_F(SnapshotTest, ManifestV2SnapshotsStillVerifyAndRestore) {
+    write_text(src_path_ / "a.txt", "alpha");
+    write_text(src_path_ / "sub" / "b.txt", "beta");
+    Repo repo = Repo::open(repo_path_);
+    Digest v3_digest = create_snapshot(repo, src_path_).digest;
+
+    auto manifest = Manifest::deserialize(repo.objects().get(v3_digest));
+    ASSERT_TRUE(manifest);
+    manifest->format_version = 2;
+    Digest v2_digest = repo.objects().put(manifest->serialize()).digest;
+    ASSERT_NE(v2_digest, v3_digest);
+    auto v2_bytes = repo.objects().get(v2_digest);
+    ASSERT_EQ(std::string(v2_bytes.begin(), v2_bytes.end()).find("entries_root"), std::string::npos);
+
+    EXPECT_TRUE(verify_snapshot(repo, v2_digest).ok);
+    restore_snapshot(repo, v2_digest, dest_path_);
+    EXPECT_EQ(read_file(dest_path_ / "a.txt"), to_bytes("alpha"));
+    EXPECT_EQ(read_file(dest_path_ / "sub" / "b.txt"), to_bytes("beta"));
+}

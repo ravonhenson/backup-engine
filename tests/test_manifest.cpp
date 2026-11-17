@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 
+#include "crypto/merkle.h"
 #include "snapshot/manifest.h"
+#include "test_util.h"
+
+using test_util::to_bytes;
 
 namespace {
 
@@ -39,6 +43,7 @@ TEST(Manifest, SerializeDeserializeRoundTrip) {
     file.digest = make_digest(0xAB);
     file.relative_path = "sub dir with spaces/file.txt";
     m.entries.push_back(file);
+    m.entries_root = manifest_entries_root(HashAlgo::SHA256, m.entries);
 
     auto serialized = m.serialize();
     auto parsed = Manifest::deserialize(serialized);
@@ -47,6 +52,7 @@ TEST(Manifest, SerializeDeserializeRoundTrip) {
     EXPECT_EQ(parsed->created_at, m.created_at);
     EXPECT_EQ(parsed->source_root, m.source_root);
     EXPECT_EQ(parsed->merkle_root, m.merkle_root);
+    EXPECT_EQ(parsed->entries_root, m.entries_root);
     ASSERT_EQ(parsed->entries.size(), 3u);
 
     EXPECT_TRUE(parsed->entries[0].is_directory);
@@ -86,9 +92,69 @@ TEST(Manifest, EmptyManifestRoundTrips) {
     m.created_at = 5;
     m.source_root = "/empty";
     m.merkle_root = make_digest(0x00);
+    m.entries_root = manifest_entries_root(HashAlgo::SHA256, m.entries);
     auto parsed = Manifest::deserialize(m.serialize());
     ASSERT_TRUE(parsed.has_value());
     EXPECT_EQ(parsed->created_at, 5u);
     EXPECT_EQ(parsed->merkle_root, m.merkle_root);
     EXPECT_TRUE(parsed->entries.empty());
+}
+
+// entries_root is required in v3 and not allowed in v2: a v2 manifest
+// carrying one, or a v3 manifest missing one, is not something this
+// engine ever wrote.
+TEST(Manifest, EntriesRootPresenceMustMatchVersion) {
+    const std::string root = "sha256:" + std::string(64, 'a');
+    const std::string common = "created_at=1\nsource_root=/x\nmerkle_root=" + root + "\n";
+
+    EXPECT_TRUE(Manifest::deserialize(to_bytes("format_version=2\n" + common)));
+    EXPECT_TRUE(Manifest::deserialize(to_bytes("format_version=3\n" + common + "entries_root=" + root + "\n")));
+
+    EXPECT_FALSE(Manifest::deserialize(to_bytes("format_version=3\n" + common)));
+    EXPECT_FALSE(Manifest::deserialize(to_bytes("format_version=2\n" + common + "entries_root=" + root + "\n")));
+    EXPECT_FALSE(Manifest::deserialize(to_bytes("format_version=4\n" + common + "entries_root=" + root + "\n")));
+}
+
+TEST(Manifest, SerializeRefusesUnsetRoots) {
+    Manifest m;
+    m.created_at = 1;
+    m.source_root = "/x";
+    EXPECT_THROW(m.serialize(), std::logic_error); // neither root set
+
+    m.merkle_root = make_digest(0x01);
+    EXPECT_THROW(m.serialize(), std::logic_error); // v3 without entries_root
+
+    m.entries_root = manifest_entries_root(HashAlgo::SHA256, m.entries);
+    EXPECT_NO_THROW(m.serialize());
+
+    Manifest v2;
+    v2.format_version = 2;
+    v2.merkle_root = make_digest(0x01);
+    EXPECT_NO_THROW(v2.serialize()); // v2 has no entries_root
+}
+
+// The intended use of entries_root: any single entry can be proven part of
+// the manifest from its own line plus an O(log n) path, revealing no other
+// entry.
+TEST(Manifest, EveryEntryHasAnInclusionPathToEntriesRoot) {
+    std::vector<ManifestEntry> entries;
+    entries.push_back({true, 0755, 0, Digest{}, "."});
+    for (int i = 0; i < 6; ++i) {
+        entries.push_back({false, 0644, static_cast<uint64_t>(i), make_digest(static_cast<uint8_t>(i)),
+                           "file " + std::to_string(i)});
+    }
+    Digest root = manifest_entries_root(HashAlgo::SHA256, entries);
+
+    std::vector<Digest> leaves;
+    for (const auto& e : entries) leaves.push_back(manifest_entry_leaf(HashAlgo::SHA256, e));
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        auto path = merkle_path(HashAlgo::SHA256, leaves, i);
+        EXPECT_TRUE(merkle_verify_inclusion(HashAlgo::SHA256, leaves[i], i, entries.size(), path, root)) << i;
+    }
+
+    // A changed entry (here: a different size) no longer matches its slot.
+    ManifestEntry altered = entries[3];
+    altered.size += 1;
+    EXPECT_FALSE(merkle_verify_inclusion(HashAlgo::SHA256, manifest_entry_leaf(HashAlgo::SHA256, altered), 3,
+                                         entries.size(), merkle_path(HashAlgo::SHA256, leaves, 3), root));
 }

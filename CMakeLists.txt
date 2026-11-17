@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Layers, lowest first. Each may include only from layers above it in
-# this list: util <- crypto <- storage <- log <- snapshot <- main.cpp.
+# this list: util <- crypto <- storage <- log <- snapshot <- cli.
 add_library(backup_engine_core STATIC
     src/util/fs_util.cpp
     src/util/text_format.cpp
@@ -39,7 +39,14 @@ target_include_directories(backup_engine_core PUBLIC
     third_party/monocypher
 )
 
-add_executable(backup_engine src/main.cpp)
+add_executable(backup_engine
+    src/main.cpp
+    src/cli/cli.cpp
+    src/cli/object_commands.cpp
+    src/cli/snapshot_commands.cpp
+    src/cli/log_commands.cpp
+    src/cli/proof_commands.cpp
+)
 target_link_libraries(backup_engine PRIVATE backup_engine_core)
 
 option(BACKUP_ENGINE_BUILD_TESTS "Build the unit test suite" ON)
